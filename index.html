@@ -245,7 +245,7 @@ def read_any(data, name):
         first = txt.splitlines()[0]
         sep = max(";,\t|", key=lambda c: first.count(c))
         df = pd.read_csv(io.StringIO(txt), sep=sep, dtype=object, engine="python", on_bad_lines="skip")
-    df.columns = [str(c).strip() for c in df.columns]
+    df.columns = [re.sub(r"\s+", " ", str(c)).strip() for c in df.columns]
     df = df.loc[:, [c for c in df.columns if c and not c.startswith("Unnamed")]]
     return df
 
@@ -290,14 +290,16 @@ def load(data, name):
         col = df[c]
         if isinstance(col, pd.DataFrame): col = col.iloc[:, 0]
         p = col.map(pnum)
+        if re.search(r"longitud|\blon\b|\blng\b|latitud|\blat\b", c.lower()):
+            p2 = col.map(pcoord); p = p2 if p2.notna().sum() >= p.notna().sum() else p
         if col.notna().sum() and p.notna().sum() / col.notna().sum() >= .8: num[c] = p
         elif col.notna().sum() and col.map(pcoord).notna().sum() / col.notna().sum() >= .8: num[c] = col.map(pcoord)
         else: skipped.append(c)
     D0 = pd.DataFrame(num); keep = D0.dropna(how="all").index
     DF = D0.loc[keep].reset_index(drop=True); RAW = df.loc[keep].reset_index(drop=True); cols = list(DF.columns)
     low = {c: c.lower() for c in cols}
-    find = lambda rx: next((c for c in cols if re.fullmatch(rx, low[c])), None)
-    cx = find(r"ce|x|este|east\w*|lon\w*|lng|longitud\w*|coordx|coord_x"); cy = find(r"cn|y|norte|north\w*|lat\w*|latitud\w*|coordy|coord_y")
+    find = lambda rx: next((c for c in cols if re.search(rx, low[c])), None)
+    cx = find(r"longitud|\blon\b|\blng\b|\beste\b|\beast|\bcoord[ _]?x\b|^x$|^ce$"); cy = find(r"latitud|\blat\b|\bnorte\b|\bnorth|\bcoord[ _]?y\b|^y$|^cn$")
     dep = next((c for c in cols if re.search(r"ptotal|precio|price|valor|value", low[c])), cols[-1])
     ph = "<table><tr>" + "".join(f"<th>{c}</th>" for c in cols) + "</tr>" + "".join(
         "<tr>" + "".join(f"<td>{fa(v)}</td>" for v in r) + "</tr>" for r in DF.head(8).values) + "</table>"
